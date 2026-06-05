@@ -1,0 +1,138 @@
+# =============================================================================
+# ESPnet2 Training Config — Chunk-Conformer Streaming Encoder
+# Project: Combined CTC/Attention Streaming Decoding for Subtitles
+#
+# STAGE 2: Replace offline Conformer with a chunk-aware streaming encoder.
+# Use this config AFTER establishing a solid offline baseline WER.
+#
+# Changes from train_asr_conformer.yaml:
+#   - encoder: chunk_conformer (causal self-attention + limited right-context)
+#   - chunk_size: 320ms (32 frames × 10ms) — primary latency knob
+#   - right_context: 80ms (8 frames) lookahead — tune for accuracy/latency
+#   - All other hyperparameters kept identical to baseline for fair comparison
+# =============================================================================
+
+seed: 2023
+num_workers: 4
+
+# ---------------------------------------------------------------------------
+# Streaming Encoder — Chunk-Conformer
+#
+# chunk_size:    number of encoder frames per chunk AFTER subsampling.
+#                At 10ms/frame with conv2d 4x subsampling:
+#                  8 frames  =  320ms chunk  (low latency)
+#                 16 frames  =  640ms chunk  (medium latency)
+#                 32 frames  = 1280ms chunk  (high accuracy, subtitle-friendly)
+#
+# right_context: frames of future context visible to each chunk.
+#                  0 = fully causal (minimum latency)
+#                  2 = 80ms lookahead (good tradeoff)
+#                  4 = 160ms lookahead (near-offline quality on long sentences)
+#
+# Ablation table for your paper:
+#   chunk_size  | right_context | Latency (ms) | WER test-clean
+#        8      |      0        |    ~320      |  TBD
+#        8      |      2        |    ~400      |  TBD
+#       16      |      2        |    ~720      |  TBD
+#       32      |      4        |   ~1440      |  TBD
+#   offline     |      -        |      -       | baseline
+# ---------------------------------------------------------------------------
+encoder: conformer
+encoder_conf:
+    output_size: 256
+    attention_heads: 4
+    linear_units: 2048
+    num_blocks: 12
+    dropout_rate: 0.1
+    positional_dropout_rate: 0.1
+    attention_dropout_rate: 0.0
+    input_layer: conv2d
+    normalize_before: true
+    macaron_style: true
+    rel_pos_type: latest
+    pos_enc_layer_type: rel_pos
+    selfattn_layer_type: rel_selfattn
+    activation_type: swish
+    use_cnn_module: true
+    cnn_module_kernel: 31
+    # --- Streaming-specific ---
+    causal: true                 # Causal self-attention (no future frames in attention)
+    chunk_size: 8                # Frames per chunk (post-subsampling). Start with 8.
+    right_context: 2             # Lookahead frames. 0 = fully causal.
+
+# ---------------------------------------------------------------------------
+# Decoder — unchanged from offline baseline
+# ---------------------------------------------------------------------------
+decoder: transformer
+decoder_conf:
+    attention_heads: 4
+    linear_units: 2048
+    num_blocks: 6
+    dropout_rate: 0.1
+    positional_dropout_rate: 0.1
+    self_attention_dropout_rate: 0.0
+    src_attention_dropout_rate: 0.0
+
+# ---------------------------------------------------------------------------
+# Model — slightly higher CTC weight for streaming (CTC is more reliable
+# with limited context; attention rescoring is used selectively at triggers)
+# ---------------------------------------------------------------------------
+model_conf:
+    ctc_weight: 0.5              # Raised from 0.3 → 0.5 for streaming stability
+    lsm_weight: 0.1
+    length_normalized_loss: false
+
+# All other settings (frontend, specaug, normalize, tokenizer,
+# optimizer, scheduler, batch, training loop) are identical to
+# train_asr_conformer.yaml — inherit from there or copy below.
+frontend: default
+frontend_conf:
+    n_fft: 512
+    win_length: 400
+    hop_length: 160
+
+specaug: specaug
+specaug_conf:
+    apply_time_warp: true
+    time_warp_window: 5
+    time_warp_mode: bicubic
+    apply_freq_mask: true
+    freq_mask_width_range:
+        - 0
+        - 27
+    num_freq_mask: 2
+    apply_time_mask: true
+    time_mask_width_ratio_range:
+        - 0.0
+        - 0.05
+    num_time_mask: 5
+
+normalize: global_mvn
+normalize_conf:
+    stats_file: exp/asr_stats_raw_en_bpe5000/train/feats_stats.npz
+
+token_type: bpe
+bpemodel: data/en_token_list/bpe_unigram5000/bpe.model
+
+optim: adam
+optim_conf:
+    lr: 0.002
+    weight_decay: 0.000001
+scheduler: warmuplr
+scheduler_conf:
+    warmup_steps: 25000
+
+batch_type: numel
+batch_bins: 35000000
+accum_grad: 3
+max_epoch: 70
+patience: none
+init: none
+
+best_model_criterion:
+    - - valid
+      - acc
+      - max
+keep_nbest_models: 10
+use_amp: true
+ngpu: 1
