@@ -14,6 +14,9 @@ media player, live streams) with no virtual cable software needed.
 
 ## Quick start
 pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+
 pip install espnet espnet_model_zoo soundfile librosa soundcard
+
 python download_model.py
+
 python live_subtitle.py
