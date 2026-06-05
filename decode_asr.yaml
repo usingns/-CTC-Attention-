@@ -1,0 +1,41 @@
+# =============================================================================
+# ESPnet2 Decoding Config — Offline Joint CTC/Attention Beam Search
+# Project: Combined CTC/Attention Streaming Decoding for Subtitles
+#
+# This config controls inference ONLY (separate from training ctc_weight).
+# Run ablations over ctc_weight and beam_size — results go in your paper.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Beam search
+#   beam_size: 60 gives best WER; use 10-20 for fast dev-set checks
+#   ctc_weight: weight of CTC score in the joint beam search
+#     - 0.0 = pure Attention decoding
+#     - 0.3 = recommended joint weight (matches training)
+#     - 1.0 = pure CTC greedy/beam (fastest, worst WER)
+#   Ablation table suggestion: [0.0, 0.1, 0.3, 0.5, 0.7, 1.0]
+# ---------------------------------------------------------------------------
+beam_size: 60
+ctc_weight: 0.3
+
+# ---------------------------------------------------------------------------
+# Length penalties
+#   penalty: per-step insertion penalty (positive = shorter output)
+#   maxlenratio: max output tokens = maxlenratio × input frames (0 = no cap)
+#   minlenratio: min output tokens = minlenratio × input frames
+# ---------------------------------------------------------------------------
+penalty: 0.0
+maxlenratio: 0.0
+minlenratio: 0.0
+
+# ---------------------------------------------------------------------------
+# Language model (disabled for baseline — enable for final system)
+#   lm_weight: 0.0 = no LM; typical range 0.3-0.7 with a trained RNNLM/Transformer LM
+#   To enable: set lm_weight and point to a trained LM via --lm_train_config
+# ---------------------------------------------------------------------------
+lm_weight: 0.0
+
+# ---------------------------------------------------------------------------
+# Normalisation (for WER scoring)
+# ---------------------------------------------------------------------------
+normalize_length: false
